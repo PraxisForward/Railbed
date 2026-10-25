@@ -49,6 +49,33 @@ class TemplateTest < Minitest::Test
     end
   end
 
+  def test_rubocop_caps_lines_and_puts_one_element_per_line
+    config = YAML.safe_load_file(ROOT.join("files/.rubocop.yml"), aliases: true)
+
+    assert_equal 120, config.fetch("Layout/LineLength").fetch("Max")
+    assert_equal "with_fixed_indentation", config.fetch("Layout/ArgumentAlignment").fetch("EnforcedStyle")
+    %w[
+      Layout/MultilineHashKeyLineBreaks
+      Layout/MultilineMethodArgumentLineBreaks
+      Quality/OneElementPerLine
+    ].each do |cop|
+      assert_equal true, config.fetch(cop).fetch("Enabled"), "#{cop} must be enabled"
+    end
+    assert_equal %w[array hash heredoc method_call], config.fetch("RSpec/ExampleLength").fetch("CountAsOne")
+  end
+
+  def test_template_delivers_one_element_per_line_cop
+    template = ROOT.join("template.rb").read
+
+    %w[
+      lib/rubocop/cop/quality/one_element_per_line.rb
+      spec/rubocop/cop/quality/one_element_per_line_spec.rb
+    ].each do |path|
+      assert_includes template, %(copy_template_file "#{path}")
+      assert ROOT.join("files", path).file?, "Missing template asset: #{path}"
+    end
+  end
+
   def test_warespace_namespace_does_not_leak_into_generated_files
     generated_files = ROOT.join("files").glob("**/*").select(&:file?)
     leaks = generated_files.select { |path| path.read.include?("WareSpace") }

@@ -9,7 +9,12 @@ RSpec.describe RuboCop::Cop::Quality::TimeForABoolean do
   let(:config) { RuboCop::Config.new("Quality/TimeForABoolean" => { "Enabled" => true }) }
   let(:cop) { described_class.new(config) }
 
-  %w[t.boolean\ :active t.column\ :active,\ :boolean add_column\ :users,\ :active,\ :boolean change_column\ :users,\ :active,\ :boolean].each do |statement|
+  [
+    "t.boolean :active",
+    "t.column :active, :boolean",
+    "add_column :users, :active, :boolean",
+    "change_column :users, :active, :boolean"
+  ].each do |statement|
     context "with #{statement}" do
       let(:source) { statement }
 

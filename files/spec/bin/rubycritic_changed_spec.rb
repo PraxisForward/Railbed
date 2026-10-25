@@ -11,7 +11,9 @@ RSpec.describe "bin/rubycritic-changed" do
       file.write(JSON.generate(report))
       file.flush
       stdout, _stderr, status = Open3.capture3(
-        Rails.root.join("bin/rubycritic-changed").to_s, "--check-report", file.path
+        Rails.root.join("bin/rubycritic-changed").to_s,
+        "--check-report",
+        file.path
       )
       return [ status.success?, stdout ]
     end
@@ -38,7 +40,9 @@ RSpec.describe "bin/rubycritic-changed" do
     Dir.mktmpdir("rubycritic-null-base") do |repo|
       _init_stdout, init_stderr, init_status = Open3.capture3("git", "init", "--quiet", chdir: repo)
       stdout, stderr, status = Open3.capture3(
-        Rails.root.join("bin/rubycritic-changed").to_s, "0" * 40, chdir: repo
+        Rails.root.join("bin/rubycritic-changed").to_s,
+        "0" * 40,
+        chdir: repo
       )
       return [ init_status.success?, init_stderr, status.success?, stdout, stderr ]
     end

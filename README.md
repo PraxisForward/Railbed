@@ -46,6 +46,9 @@ one command that tells a developer or coding agent whether a change is ready.
 ### Types and code quality
 
 - Sorbet strict mode
+- 120-column lines, with `Quality/OneElementPerLine` and the stock line-break
+  cops putting each argument or hash key on its own line once a call or hash
+  breaks across lines
 - Tapioca gem and DSL RBI generation
 - Rails Omakase with RSpec, FactoryBot, and ViewComponent RuboCop plugins
 - Custom cops for inline classes, direct instance-variable reads, and boolean

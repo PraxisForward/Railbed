@@ -6,6 +6,7 @@ plugins:
 
 require:
   - ./lib/rubocop/cop/quality/no_inline_class
+  - ./lib/rubocop/cop/quality/one_element_per_line
   - ./lib/rubocop/cop/quality/prefer_bareword_readers
   - ./lib/rubocop/cop/quality/time_for_a_boolean
 
@@ -49,7 +50,24 @@ FactoryBot/RedundantFactoryOption:
 FactoryBot/SyntaxMethods:
   Enabled: true
 
+Layout/ArgumentAlignment:
+  Enabled: true
+  EnforcedStyle: with_fixed_indentation
+
 Layout/ClassStructure:
+  Enabled: true
+
+Layout/HashAlignment:
+  Enabled: true
+
+Layout/LineLength:
+  Enabled: true
+  Max: 120
+
+Layout/MultilineHashKeyLineBreaks:
+  Enabled: true
+
+Layout/MultilineMethodArgumentLineBreaks:
   Enabled: true
 
 Naming/AccessorMethodName:
@@ -73,6 +91,13 @@ RSpec/DescribeClass:
 
 RSpec/DiscardedMatcher:
   Enabled: true
+
+RSpec/ExampleLength:
+  CountAsOne:
+    - array
+    - hash
+    - heredoc
+    - method_call
 
 RSpec/IncludeExamples:
   Enabled: true
@@ -99,6 +124,9 @@ Style/ClassAndModuleChildren:
   Enabled: true
 
 Quality/NoInlineClass:
+  Enabled: true
+
+Quality/OneElementPerLine:
   Enabled: true
 
 Quality/PreferBarewordReaders:
