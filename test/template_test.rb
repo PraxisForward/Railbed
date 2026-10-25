@@ -78,6 +78,13 @@ class TemplateTest < Minitest::Test
     assert_empty shipped.grep(/\.key\z|\.enc\z/), "Template must not ship credentials or keys"
   end
 
+  def test_new_worktrees_bring_the_ignored_credential_keys
+    assert_includes ROOT.join("template.rb").read, %(copy_template_file ".worktreeinclude")
+    included = ROOT.join("files/.worktreeinclude").read.lines(chomp: true)
+
+    assert_equal %w[config/master.key config/credentials/*.key], included
+  end
+
   def test_template_assets_exist
     template = ROOT.join("template.rb").read
     copied_paths = template.scan(/copy_template_file \"([^\"]+)\"/).flatten

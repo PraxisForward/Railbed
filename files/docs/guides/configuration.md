@@ -39,7 +39,7 @@ payments:
   api_key: "<API key>"
 ```
 
-Git ignores `config/master.key` and `config/credentials/*.key`. Never commit a key. Share keys through a password manager or your deploy platform's secret store.
+Git ignores `config/master.key` and `config/credentials/*.key`. Never commit a key. Share keys through a password manager or your deploy platform's secret store. `.worktreeinclude` lists both, so Claude Code copies the keys into each new worktree it creates.
 
 Until `config/credentials/<environment>.yml.enc` exists, Rails reads the shared `config/credentials.yml.enc` that `rails new` created, decrypted with `config/master.key`. After you create the file for an environment, Rails ignores the shared file in that environment. Copy any value you still need from the shared file into the new one.
 
