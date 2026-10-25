@@ -208,6 +208,33 @@ class TemplateTest < Minitest::Test
     assert_includes test_runner, "bin/importmap audit"
   end
 
+  def test_solid_tables_move_to_the_primary_database_before_it_is_prepared
+    template = ROOT.join("template.rb").read
+    after_bundle = template[/^after_bundle do\n.*\z/m]
+
+    assert_operator after_bundle.index("move_solid_tables_to_primary_database"), :<,
+      after_bundle.index('run "bin/rails db:prepare"')
+    %w[config/database.yml config/cable.yml config/cache.yml config/environments/production.rb].each do |path|
+      assert_includes template, %(gsub_file! "#{path}")
+    end
+    assert_includes template, 'remove_file schema_path'
+    assert_includes template, 'run "bundle exec rubocop -A Gemfile db/migrate"'
+  end
+
+  def test_development_works_jobs_like_production_and_tests_keep_the_test_adapter
+    template = ROOT.join("template.rb").read
+
+    assert_includes template, "config.active_job.queue_adapter = :solid_queue"
+    assert_includes template, "config.active_job.queue_adapter = :test"
+    assert_includes template, 'append_to_file "Procfile.dev", "jobs: bin/jobs\\n"'
+  end
+
+  def test_boolean_cop_skips_the_copied_solid_queue_migration
+    config = YAML.safe_load_file(ROOT.join("files/.rubocop.yml"), aliases: true)
+
+    assert_equal %w[db/migrate/*_create_solid_queue_tables.rb], config.fetch("Quality/TimeForABoolean").fetch("Exclude")
+  end
+
   private
 
   def check_rubycritic_report(report)

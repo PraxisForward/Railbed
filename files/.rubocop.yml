@@ -112,3 +112,6 @@ Quality/TimeForABoolean:
   Enabled: true
   Include:
     - "db/migrate/**/*.rb"
+  # Solid Queue's own schema, copied at generation; its boolean column is not ours to change.
+  Exclude:
+    - "db/migrate/*_create_solid_queue_tables.rb"

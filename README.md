@@ -28,7 +28,8 @@ one command that tells a developer or coding agent whether a change is ready.
 
 - PostgreSQL with Rails' default `schema.rb`
 - Tailwind CSS, importmap, Turbo, and Stimulus
-- Solid Queue, Solid Cache, and Solid Cable
+- Solid Queue, Solid Cache, and Solid Cable on the primary database, so a job
+  enqueue commits or rolls back with the data it depends on
 - ViewComponent
 - `fx` for database functions and views
 - Timestamp-backed booleans
@@ -97,6 +98,21 @@ mise exec ruby@4.0.5 -- rails new my_app \
 Railbed reads its supporting files from the local clone when available and
 fetches them from the repository's raw `main` URL when invoked remotely. Set
 `RAILS_TEMPLATE_ASSET_BASE_URL` to test assets from a fork or branch.
+
+## One database
+
+Rails 8 gives Solid Queue, Solid Cache, and Solid Cable separate production
+databases. Railbed keeps one database instead. During generation it turns each
+installer's `db/*_schema.rb` into an ordinary migration, removes the extra
+production entries from `config/database.yml` and the `connects_to` settings
+from `config/cable.yml`, `config/cache.yml`, and `config/environments/production.rb`,
+and runs the migrations into `db/schema.rb`. Development uses Solid Queue too,
+and `bin/dev` starts `bin/jobs`.
+
+To adopt this in an existing Railbed application, copy each `db/*_schema.rb`
+body into a migration, delete the schema files, make those edits, and run
+`bin/rails db:migrate`. In production, the old queue, cache, and cable databases
+are no longer read. Drain the queue before you deploy.
 
 ## Verify your generated application
 

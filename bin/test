@@ -22,6 +22,17 @@ if [[ "${INTEGRATION:-0}" == "1" ]]; then
     test -f ".claude/skills/$skill/SKILL.md"
   done
 
+  test ! -e db/queue_schema.rb && test ! -e db/cache_schema.rb && test ! -e db/cable_schema.rb
+  for table in solid_queue_jobs solid_cache_entries solid_cable_messages; do
+    grep -q "create_table \"$table\"" db/schema.rb
+  done
+  if grep -Eq "^  (primary|queue|cache|cable):" config/database.yml ||
+    grep -q "connects_to" config/cable.yml config/environments/production.rb ||
+    grep -q "database: cache" config/cache.yml; then
+    echo "Solid Queue, Cache, or Cable still points at a separate database" >&2
+    exit 1
+  fi
+
   git init --quiet
   empty_tree="$(git hash-object -t tree /dev/null)"
   mise exec ruby@4.0.5 -- bin/dependency-policy
