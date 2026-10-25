@@ -30,3 +30,19 @@ CI fetches complete Git history and compares against the pull-request base SHA o
 ## RuboCop scope
 
 `Quality/PreferBarewordReaders` remains enforced for application and domain Ruby, but excludes controllers, mailers, and views. Instance variables are conventional Rails presentation state in those framework-facing layers. This is deliberate cop scope, not a legacy todo-baseline exclusion.
+
+## Line layout
+
+Lines are at most 120 columns. Once a call's arguments or a hash's keys break after the opening bracket, each element starts its own line:
+
+```ruby
+Open3.capture3(
+  "bin/rubycritic-changed",
+  "--check-report",
+  path
+)
+```
+
+`Layout/MultilineMethodArgumentLineBreaks` and `Layout/MultilineHashKeyLineBreaks` report elements spread over several lines. `Quality/OneElementPerLine` reports the case they skip, where every element shares the one line after the bracket, and autocorrects it. An element that shares a line with a heredoc opener is allowed. Arguments use fixed indentation rather than aligning with the opening bracket.
+
+`RSpec/ExampleLength` counts a multiline array, hash, heredoc, or method call as one line, so this layout does not push an example over the limit.
