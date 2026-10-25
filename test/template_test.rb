@@ -40,6 +40,44 @@ class TemplateTest < Minitest::Test
     assert ROOT.join("files", path).file?, "Missing template asset: #{path}"
   end
 
+  def test_direct_env_reads_are_limited_to_the_credentials_accessor
+    config = YAML.safe_load_file(ROOT.join("files/.rubocop.yml"), aliases: true)
+    cop_config = config.fetch("Quality/NoDirectEnv")
+
+    assert_equal true, cop_config.fetch("Enabled")
+    assert_equal %w[app/**/*.rb lib/**/*.rb config/initializers/**/*.rb], cop_config.fetch("Include")
+    assert_equal %w[lib/credentials.rb], cop_config.fetch("Exclude")
+  end
+
+  def test_template_delivers_the_credentials_accessor
+    template = ROOT.join("template.rb").read
+
+    %w[
+      docs/guides/configuration.md
+      lib/credentials.rb
+      lib/rubocop/cop/quality/no_direct_env.rb
+      spec/lib/credentials_spec.rb
+      spec/rubocop/cop/quality/no_direct_env_spec.rb
+      spec/support/credentials_helpers.rb
+      spec/support/env_helpers.rb
+    ].each do |path|
+      assert_includes template, %(copy_template_file "#{path}")
+      assert ROOT.join("files", path).file?, "Missing template asset: #{path}"
+    end
+    assert_includes ROOT.join("files/spec/rails_helper.rb").read, 'Rails.root.glob("spec/support/**/*.rb")'
+  end
+
+  def test_lib_loads_once_so_initializers_can_read_credentials
+    assert_includes ROOT.join("template.rb").read, '"config.autoload_lib_once(ignore: %w[assets rubocop tasks])"'
+  end
+
+  def test_template_ignores_per_environment_credential_keys_and_ships_none
+    assert_includes ROOT.join("template.rb").read, "/config/credentials/*.key"
+    shipped = ROOT.join("files").glob("**/*").select(&:file?).map { |path| path.basename.to_s }
+
+    assert_empty shipped.grep(/\.key\z|\.enc\z/), "Template must not ship credentials or keys"
+  end
+
   def test_template_assets_exist
     template = ROOT.join("template.rb").read
     copied_paths = template.scan(/copy_template_file \"([^\"]+)\"/).flatten

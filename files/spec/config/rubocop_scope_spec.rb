@@ -19,4 +19,24 @@ RSpec.describe "RuboCop scope" do
       Rails.root.join("app/views/**/*").to_s
     )
   end
+
+  describe "Quality/NoDirectEnv" do
+    let(:probe_paths) do
+      %w[
+        app/models/probe.rb
+        lib/example/probe.rb
+        config/initializers/probe.rb
+        lib/credentials.rb
+        config/puma.rb
+        spec/probe_spec.rb
+      ]
+    end
+
+    it "keeps direct ENV reads out of app, lib, and initializers, except in the credentials accessor" do
+      cop = RuboCop::Cop::Quality::NoDirectEnv.new(config)
+
+      expect(probe_paths.select { |path| cop.relevant_file?(Rails.root.join(path).to_s) })
+        .to eq(%w[app/models/probe.rb lib/example/probe.rb config/initializers/probe.rb])
+    end
+  end
 end
