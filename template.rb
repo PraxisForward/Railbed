@@ -48,7 +48,10 @@ copy_template_file "bin/tapioca"
 copy_template_file "config/bundler-audit.yml"
 copy_template_file "config/ci.rb"
 copy_template_file "config/initializers/strong_migrations.rb"
+copy_template_file "docs/guides/configuration.md"
 copy_template_file "docs/guides/testing.md"
+copy_template_file "lib/credentials.rb"
+copy_template_file "lib/rubocop/cop/quality/no_direct_env.rb"
 copy_template_file "lib/rubocop/cop/quality/no_inline_class.rb"
 copy_template_file "lib/rubocop/cop/quality/prefer_bareword_readers.rb"
 copy_template_file "lib/rubocop/cop/quality/time_for_a_boolean.rb"
@@ -61,11 +64,15 @@ copy_template_file "spec/config/sorbet_strictness_spec.rb"
 copy_template_file "spec/config/testing_stack_spec.rb"
 copy_template_file "spec/config/rubocop_scope_spec.rb"
 copy_template_file "spec/bin/rubycritic_changed_spec.rb"
+copy_template_file "spec/lib/credentials_spec.rb"
+copy_template_file "spec/rubocop/cop/quality/no_direct_env_spec.rb"
 copy_template_file "spec/rubocop/cop/quality/no_inline_class_spec.rb"
 copy_template_file "spec/rubocop/cop/quality/prefer_bareword_readers_spec.rb"
 copy_template_file "spec/rubocop/cop/quality/time_for_a_boolean_spec.rb"
 copy_template_file "spec/spec_helper.rb"
 copy_template_file "spec/rails_helper.rb"
+copy_template_file "spec/support/credentials_helpers.rb"
+copy_template_file "spec/support/env_helpers.rb"
 copy_template_file "skills-lock.json"
 
 empty_directory ".claude/skills"
@@ -74,10 +81,11 @@ AGENT_SKILLS.each do |skill|
 end
 
 create_file ".gitignore" unless File.exist?(".gitignore")
-append_to_file ".gitignore", "\n/vendor/bundle\n/coverage\n"
+append_to_file ".gitignore", "\n/vendor/bundle\n/coverage\n/config/credentials/*.key\n"
 
+# Loaded once rather than reloaded, so initializers can call Credentials.dig at boot.
 gsub_file "config/application.rb", "config.autoload_lib(ignore: %w[assets tasks])",
-  "config.autoload_lib(ignore: %w[assets rubocop tasks])"
+  "config.autoload_lib_once(ignore: %w[assets rubocop tasks])"
 
 application <<~RUBY
   config.generators do |generators|

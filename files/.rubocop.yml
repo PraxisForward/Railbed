@@ -5,6 +5,7 @@ plugins:
   - rubocop-view_component
 
 require:
+  - ./lib/rubocop/cop/quality/no_direct_env
   - ./lib/rubocop/cop/quality/no_inline_class
   - ./lib/rubocop/cop/quality/prefer_bareword_readers
   - ./lib/rubocop/cop/quality/time_for_a_boolean
@@ -97,6 +98,15 @@ Style/AccessModifierDeclarations:
 
 Style/ClassAndModuleChildren:
   Enabled: true
+
+Quality/NoDirectEnv:
+  Enabled: true
+  Include:
+    - "app/**/*.rb"
+    - "lib/**/*.rb"
+    - "config/initializers/**/*.rb"
+  Exclude:
+    - "lib/credentials.rb"
 
 Quality/NoInlineClass:
   Enabled: true

@@ -23,6 +23,7 @@ if [[ "${INTEGRATION:-0}" == "1" ]]; then
   done
 
   git init --quiet
+  git check-ignore --quiet config/credentials/production.key
   empty_tree="$(git hash-object -t tree /dev/null)"
   mise exec ruby@4.0.5 -- bin/dependency-policy
   mise exec ruby@4.0.5 -- bundle exec rspec

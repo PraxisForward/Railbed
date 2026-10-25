@@ -32,6 +32,8 @@ one command that tells a developer or coding agent whether a change is ready.
 - ViewComponent
 - `fx` for database functions and views
 - Timestamp-backed booleans
+- `Credentials.dig` for settings: environment variable overrides over
+  per-environment Rails credentials
 
 ### Tests and feedback
 
@@ -47,8 +49,8 @@ one command that tells a developer or coding agent whether a change is ready.
 - Sorbet strict mode
 - Tapioca gem and DSL RBI generation
 - Rails Omakase with RSpec, FactoryBot, and ViewComponent RuboCop plugins
-- Custom cops for inline classes, direct instance-variable reads, and boolean
-  database columns
+- Custom cops for inline classes, direct instance-variable reads, boolean
+  database columns, and `ENV` reads outside `lib/credentials.rb`
 - RubyCritic with a 95/100 aggregate minimum score and a changed-code
   complexity gate
 
@@ -121,6 +123,20 @@ Done.
 
 Generated gem and DSL RBIs are specific to the application and should be
 committed.
+
+## Configuration
+
+Generated applications read every setting through `Credentials.dig` in
+`lib/credentials.rb`. `Credentials.dig(:payments, :api_key)` returns a non-blank
+`PAYMENTS_API_KEY` environment variable when one is set, and otherwise the value
+from the current environment's Rails credentials. `Quality/NoDirectEnv` forbids
+`ENV` in `app/`, `lib/`, and `config/initializers/` everywhere else. `lib/` is
+loaded once at boot (`config.autoload_lib_once`) so initializers can call it.
+
+Railbed ships no credentials or keys. Each application creates its own
+per-environment files with `bin/rails credentials:edit --environment <env>`, and
+Git ignores `config/credentials/*.key`. Generated applications include
+`docs/guides/configuration.md` with the full convention.
 
 ## Agent skills
 

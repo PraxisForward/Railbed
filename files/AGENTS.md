@@ -1,5 +1,9 @@
 # Rails Application Contributor Guide
 
+## Configuration
+
+Read settings and secrets with `Credentials.dig(:service, :key)`. A non-blank `SERVICE_KEY` environment variable overrides the current environment's Rails credentials. Do not read `ENV` in `app/`, `lib/`, or `config/initializers/`. `Quality/NoDirectEnv` enforces this rule, and `lib/credentials.rb` is the only exception. Never commit `config/master.key` or `config/credentials/*.key`. See `docs/guides/configuration.md`.
+
 ## Quality Commands
 
 ```bash
