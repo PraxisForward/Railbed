@@ -24,6 +24,57 @@ def copy_template_file(path, destination = path)
   end
 end
 
+SOLID_SCHEMAS = {
+  "cache" => "create_solid_cache_tables",
+  "queue" => "create_solid_queue_tables",
+  "cable" => "create_solid_cable_tables"
+}.freeze
+PRODUCTION_DATABASES =
+  /^production:\n  primary: &primary_production\n((?:    .*\n)+)(?:  (?:cache|queue|cable):\n(?:    .*\n)+)+/
+
+# Rails gives Solid Queue, Cache, and Cable their own production databases. Railbed
+# keeps their tables in the primary database instead, so a job enqueue commits or
+# rolls back with the data it depends on. Each installer's schema file becomes an
+# ordinary migration, so it matches the installed gem version. gsub_file! fails
+# generation if a Rails or gem upgrade changes the files these edits expect.
+def move_solid_tables_to_primary_database
+  version = "#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}"
+  timestamp = Time.now.utc.strftime("%Y%m%d%H%M%S").to_i
+
+  SOLID_SCHEMAS.each_with_index do |(name, migration_name), index|
+    schema_path = "db/#{name}_schema.rb"
+    create_file "db/migrate/#{timestamp + index}_#{migration_name}.rb",
+      solid_migration(File.read(schema_path), schema_path, migration_name.camelize, version)
+    remove_file schema_path
+  end
+
+  gsub_file! "config/database.yml", PRODUCTION_DATABASES do |production|
+    primary = production[PRODUCTION_DATABASES, 1].gsub(/^  /, "")
+    "# One database holds the application tables and the Solid Queue, Solid Cache,\n" \
+      "# and Solid Cable tables, so a job enqueue can commit in the same transaction\n" \
+      "# as the data it depends on.\nproduction:\n#{primary}"
+  end
+  gsub_file! "config/cable.yml", /^  connects_to:\n    database:\n      writing: cable\n/, ""
+  gsub_file! "config/cache.yml", /^  database: cache\n/, ""
+  gsub_file! "config/environments/production.rb", /^  config\.solid_queue\.connects_to = .*\n/, ""
+  append_to_file "Procfile.dev", "jobs: bin/jobs\n"
+end
+
+def solid_migration(schema, schema_path, migration_class, version)
+  body = schema[/\.define\(version: [\d_]+\) do\n(.*)^end/m, 1].gsub(", force: :cascade", "")
+  foreign_keys = body.scan(/^  add_foreign_key .*\n/).join
+  body = body.gsub(/^  add_foreign_key .*\n/, "").rstrip + "\n"
+  unless foreign_keys.empty?
+    body += "\n  # The referenced tables are created above in this migration and are still\n" \
+      "  # empty, so validating these keys cannot block writes.\n" \
+      "  safety_assured do\n#{foreign_keys.gsub(/^/, '  ')}  end\n"
+  end
+
+  "# Copied from #{schema_path} so these tables live in the primary database.\n" \
+    "class #{migration_class} < ActiveRecord::Migration[#{version}]\n" \
+    "  def change\n#{body.gsub(/^(?=.)/, '  ')}  end\nend\n"
+end
+
 say "Applying Damian's Rails defaults", :green
 
 copy_template_file "Gemfile.tt", "Gemfile"
@@ -95,6 +146,15 @@ environment <<~RUBY, env: :development
   end
 RUBY
 
+environment <<~RUBY, env: :development
+  # Match production: jobs enqueue into the primary database. bin/dev runs bin/jobs to work them.
+  config.active_job.queue_adapter = :solid_queue
+RUBY
+
+environment <<~RUBY, env: :test
+  config.active_job.queue_adapter = :test
+RUBY
+
 environment <<~RUBY, env: :test
   config.after_initialize do
     Bullet.enable = true
@@ -128,10 +188,12 @@ after_bundle do
     File.write(path, typed_contents)
   end
 
+  move_solid_tables_to_primary_database
+
   run "bin/tapioca gems"
   run "bin/rails db:prepare"
   run "bin/tapioca dsl"
-  run "bundle exec rubocop -A Gemfile"
+  run "bundle exec rubocop -A Gemfile db/migrate"
 
   chmod "bin/dependency-policy", 0o755
   chmod "bin/rubycritic", 0o755
