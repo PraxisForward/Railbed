@@ -23,9 +23,9 @@ jobs:
         run: bin/rubocop -f github
       - name: Typecheck Ruby
         run: bundle exec srb tc
-      - name: Enforce maintainability score
+      - name: Report maintainability score (backstop floor)
         run: bin/rubycritic
-      - name: Reject newly changed complex Ruby methods
+      - name: Reject rating regressions in changed Ruby files
         env:
           RUBYCRITIC_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: bin/rubycritic-changed "$RUBYCRITIC_BASE"
