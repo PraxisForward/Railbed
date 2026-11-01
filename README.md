@@ -55,8 +55,8 @@ one command that tells a developer or coding agent whether a change is ready.
 - Rails Omakase with RSpec, FactoryBot, and ViewComponent RuboCop plugins
 - Custom cops for inline classes, direct instance-variable reads, boolean
   database columns, and `ENV` reads outside `lib/credentials.rb`
-- RubyCritic with a 95/100 aggregate minimum score and a changed-code
-  complexity gate
+- RubyCritic with a changed-file rating gate and a 90/100 aggregate
+  backstop
 
 ### Safety and CI
 
@@ -135,10 +135,13 @@ bin/rubycritic
 bin/rubycritic-changed <base-ref>
 ```
 
-The changed-code gate blocks `HighComplexity` and `TooManyStatements` findings
-at 10 or more statements. Generated applications include `AGENTS.md` and
-`docs/guides/testing.md` with the complete quality workflow and Definition of
-Done.
+The changed-code gate fails a changed file with a worse RubyCritic rating
+letter than it had on the base revision, an added file that is not rated
+B or better, and any blocking method smell; each failure names the file and its
+rating before and after. `bin/rubycritic` still prints the codebase-wide score
+and fails only below the 90/100 backstop. Generated applications include
+`AGENTS.md` and `docs/guides/testing.md` with the complete quality workflow and
+Definition of Done.
 
 Generated gem and DSL RBIs are specific to the application and should be
 committed.

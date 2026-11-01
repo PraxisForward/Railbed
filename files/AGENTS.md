@@ -25,8 +25,8 @@ A change is complete when:
 
 - Focused specs and the full relevant RSpec suite pass.
 - RuboCop, Sorbet, and relevant security checks pass.
-- `bin/rubycritic` preserves the aggregate 95/100 maintainability floor.
-- `bin/rubycritic-changed <base-ref>` reports no blocking complexity in changed Ruby files under `app/` or `lib/`.
+- `bin/rubycritic-changed <base-ref>` passes: no Ruby file under `app/` or `lib/` that the change touches has a worse RubyCritic rating letter than it had on `<base-ref>`, every added file is rated B or better, and no changed file has a blocking method smell. Each failure names the file and its rating before and after.
+- `bin/rubycritic` still prints the codebase-wide score, which fails only below the 90/100 backstop in `.rubycritic.yml`.
 - New behavior has meaningful success, failure, and boundary coverage.
 
 Short explicit mappings may remain visible in RubyCritic's focused report. Do not introduce metaprogramming solely to silence an advisory metric.
