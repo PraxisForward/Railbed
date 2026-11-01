@@ -11,8 +11,8 @@ Use tests to define behavior before implementing it. Run `bin/test` for the fast
 A change is complete when:
 
 - `bin/test` passes, and generation-affecting changes pass `INTEGRATION=1 bin/test`.
-- Generated applications retain the aggregate `bin/rubycritic` minimum score of 95/100.
-- `bin/rubycritic-changed <base-ref>` reports no blocking complexity in changed Ruby files under `app/` or `lib/`.
+- Generated applications keep the aggregate `bin/rubycritic` score above the 90/100 backstop in `files/.rubycritic.yml`, which still prints the score.
+- `bin/rubycritic-changed <base-ref>` passes in a generated application: no touched Ruby file under `app/` or `lib/` ends up with a worse RubyCritic rating letter than it had on the base revision, every added file is rated B or better, and no changed file has a blocking method smell.
 - Generated RuboCop, Sorbet, dependency-policy, test, and security checks remain passing.
 - Contributor guidance, generated documentation, and CI agree with the shipped behavior.
 

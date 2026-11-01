@@ -296,6 +296,21 @@ class TemplateTest < Minitest::Test
       "The codebase-wide score is a backstop; the per-file rating gate is the real check"
   end
 
+  def test_contributor_guidance_describes_the_rating_gate
+    shipped = [
+      ROOT.join("AGENTS.md"),
+      ROOT.join("README.md"),
+      ROOT.join("files/AGENTS.md"),
+      ROOT.join("files/docs/guides/testing.md")
+    ].to_h { |path| [path.to_s, path.read] }
+
+    shipped.each do |path, guidance|
+      assert_includes guidance, "worse RubyCritic rating", "#{path} must describe the rating gate"
+      assert_includes guidance, "B or better", "#{path} must state the new-file floor"
+      assert_includes guidance, "90/100", "#{path} must describe the aggregate score as a backstop"
+    end
+  end
+
   def test_changed_code_gate_treats_a_null_base_as_the_empty_tree
     Dir.mktmpdir("rubycritic-null-base") do |repo|
       _stdout, stderr, status = Open3.capture3("git", "init", "--quiet", chdir: repo)
