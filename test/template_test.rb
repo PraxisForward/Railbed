@@ -222,9 +222,75 @@ class TemplateTest < Minitest::Test
     assert_empty output
   end
 
+  def test_rating_gate_fails_a_changed_file_whose_rating_letter_got_worse
+    success, output = check_rubycritic_ratings(
+      base: {"app/services/example.rb" => "A"},
+      head: {"app/services/example.rb" => "B"},
+      changes: ["app/services/example.rb:app/services/example.rb"]
+    )
+
+    refute success
+    assert_equal "app/services/example.rb rating fell from A to B\n", output
+  end
+
+  def test_rating_gate_allows_a_changed_file_that_keeps_or_improves_its_rating
+    success, output = check_rubycritic_ratings(
+      base: {"app/a.rb" => "C", "app/b.rb" => "C"},
+      head: {"app/a.rb" => "C", "app/b.rb" => "B"},
+      changes: ["app/a.rb:app/a.rb", "app/b.rb:app/b.rb"]
+    )
+
+    assert success
+    assert_empty output
+  end
+
+  def test_rating_gate_fails_a_new_file_rated_worse_than_b
+    success, output = check_rubycritic_ratings(
+      base: {},
+      head: {"app/new.rb" => "C"},
+      changes: ["app/new.rb"]
+    )
+
+    refute success
+    assert_equal "app/new.rb is new and rated C; new files must be B or better\n", output
+  end
+
+  def test_rating_gate_allows_a_new_file_rated_b
+    success, output = check_rubycritic_ratings(
+      base: {},
+      head: {"app/new.rb" => "B"},
+      changes: ["app/new.rb"]
+    )
+
+    assert success
+    assert_empty output
+  end
+
+  def test_rating_gate_compares_a_renamed_file_with_the_rating_it_had_under_its_old_path
+    success, output = check_rubycritic_ratings(
+      base: {"app/old.rb" => "C"},
+      head: {"app/new.rb" => "C"},
+      changes: ["app/new.rb:app/old.rb"]
+    )
+
+    assert success
+    assert_empty output
+  end
+
+  def test_rating_gate_treats_a_copied_file_as_a_new_file
+    success, output = check_rubycritic_ratings(
+      base: {"app/original.rb" => "A"},
+      head: {"app/copy.rb" => "C"},
+      changes: ["app/copy.rb"]
+    )
+
+    refute success
+    assert_equal "app/copy.rb is new and rated C; new files must be B or better\n", output
+  end
+
   def test_changed_code_gate_treats_a_null_base_as_the_empty_tree
     Dir.mktmpdir("rubycritic-null-base") do |repo|
-      _stdout, stderr, status = Open3.capture3("git", "init", "--quiet", chdir: repo)
+      _stdout, stderr, status = Open3.capture3("git", "init", "--quiet", "--template=", chdir: repo)
       assert status.success?, stderr
 
       stdout, stderr, status = Open3.capture3(
@@ -315,6 +381,22 @@ class TemplateTest < Minitest::Test
       file.flush
       stdout, _stderr, status = Open3.capture3(
         ROOT.join("files/bin/rubycritic-changed").to_s, "--check-report", file.path
+      )
+      return [status.success?, stdout]
+    end
+  end
+
+  def check_rubycritic_ratings(base:, head:, changes:)
+    Dir.mktmpdir("rubycritic-ratings") do |dir|
+      reports = {"base" => base, "head" => head}.to_h do |name, ratings|
+        path = File.join(dir, "#{name}.json")
+        modules = ratings.map { |file, rating| {"path" => file, "rating" => rating} }
+        File.write(path, JSON.generate("analysed_modules" => modules))
+        [name, path]
+      end
+      stdout, _stderr, status = Open3.capture3(
+        ROOT.join("files/bin/rubycritic-changed").to_s, "--check-ratings",
+        reports.fetch("base"), reports.fetch("head"), *changes
       )
       return [status.success?, stdout]
     end
