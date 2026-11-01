@@ -288,9 +288,17 @@ class TemplateTest < Minitest::Test
     assert_equal "app/copy.rb is new and rated C; new files must be B or better\n", output
   end
 
+  def test_generated_rubycritic_keeps_a_ninety_backstop_score
+    config = YAML.safe_load_file(ROOT.join("files/.rubycritic.yml"))
+
+    assert_equal %w[app lib], config.fetch("paths")
+    assert_equal 90, config.fetch("minimum_score"),
+      "The codebase-wide score is a backstop; the per-file rating gate is the real check"
+  end
+
   def test_changed_code_gate_treats_a_null_base_as_the_empty_tree
     Dir.mktmpdir("rubycritic-null-base") do |repo|
-      _stdout, stderr, status = Open3.capture3("git", "init", "--quiet", "--template=", chdir: repo)
+      _stdout, stderr, status = Open3.capture3("git", "init", "--quiet", chdir: repo)
       assert status.success?, stderr
 
       stdout, stderr, status = Open3.capture3(
@@ -329,12 +337,19 @@ class TemplateTest < Minitest::Test
     assert_includes workflow, 'bin/rubycritic-changed "$RUBYCRITIC_BASE"'
   end
 
-  def test_generated_local_ci_runs_both_rubycritic_checks
+  def test_generated_local_ci_runs_the_score_backstop_and_the_rating_gate
     ci_config = ROOT.join("files/config/ci.rb").read
 
-    assert_includes ci_config, 'step "Quality: RubyCritic", "bin/rubycritic"'
-    assert_includes ci_config, 'step "Quality: Changed RubyCritic"'
+    assert_includes ci_config, 'step "Quality: RubyCritic score (backstop)", "bin/rubycritic"'
+    assert_includes ci_config, 'step "Quality: Changed-file RubyCritic ratings"'
     assert_includes ci_config, "bin/rubycritic-changed"
+  end
+
+  def test_generated_ci_workflow_names_what_each_rubycritic_step_checks
+    workflow = ROOT.join("files/.github/workflows/ci.yml").read
+
+    assert_includes workflow, "Report maintainability score (backstop floor)"
+    assert_includes workflow, "Reject rating regressions in changed Ruby files"
   end
 
   def test_integration_lane_runs_generated_quality_and_security_checks

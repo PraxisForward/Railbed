@@ -6,8 +6,8 @@ CI.run do
   step "Dependencies: Policy", "bin/dependency-policy"
   step "Style: Ruby", "bin/rubocop"
   step "Types: Sorbet", "bundle exec srb tc"
-  step "Quality: RubyCritic", "bin/rubycritic"
-  step "Quality: Changed RubyCritic",
+  step "Quality: RubyCritic score (backstop)", "bin/rubycritic"
+  step "Quality: Changed-file RubyCritic ratings",
     'bin/rubycritic-changed "${RUBYCRITIC_BASE:-$(git hash-object -t tree /dev/null)}"'
 
   step "Security: Gem audit", "bin/bundler-audit"

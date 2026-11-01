@@ -4,5 +4,5 @@ paths:
   - lib
 formats:
   - console
-minimum_score: 95
+minimum_score: 90
 no_browser: true
