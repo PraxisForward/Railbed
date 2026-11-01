@@ -8,6 +8,10 @@ require "tmpdir"
 
 MAX_ADVISORY_STATEMENTS = 9
 NULL_REVISION = /\A(?:0{40}|0{64})\z/
+RATINGS = %w[A B C D F].freeze
+WORST_NEW_FILE_RATING = "B"
+ANALYSED_DIRECTORIES = %w[app lib].freeze
+GEMFILE = File.expand_path("../Gemfile", __dir__)
 
 def blocking_smell?(smell)
   return true if smell.fetch("type") == "HighComplexity"
@@ -16,7 +20,7 @@ def blocking_smell?(smell)
   smell.fetch("message")[/\d+/].to_i > MAX_ADVISORY_STATEMENTS
 end
 
-def blocking_findings(report_path)
+def blocking_findings(report_path, only_paths: nil)
   report = JSON.parse(File.read(report_path))
 
   report.fetch("analysed_modules", []).flat_map do |analysed_module|
@@ -24,6 +28,8 @@ def blocking_findings(report_path)
       next unless blocking_smell?(smell)
 
       location = smell.fetch("locations").first
+      next if only_paths && !only_paths.include?(location.fetch("path"))
+
       format(
         "%<path>s:%<line>s %<context>s %<type>s: %<message>s",
         path: location.fetch("path"),
@@ -36,46 +42,130 @@ def blocking_findings(report_path)
   end
 end
 
-def changed_ruby_files(base_revision)
-  if base_revision.match?(NULL_REVISION)
-    base_revision, empty_tree_error, empty_tree_status = Open3.capture3(
-      "git", "hash-object", "-t", "tree", "--stdin", stdin_data: ""
-    )
-    abort(empty_tree_error) unless empty_tree_status.success?
-
-    base_revision = base_revision.strip
+# Maps each file's worst module rating by path.
+def file_ratings(report_path)
+  JSON.parse(File.read(report_path)).fetch("analysed_modules", []).each_with_object({}) do |analysed_module, ratings|
+    path = analysed_module.fetch("path")
+    rating = analysed_module.fetch("rating")
+    ratings[path] = rating if !ratings.key?(path) || RATINGS.index(rating) > RATINGS.index(ratings[path])
   end
+end
 
+# changes maps each changed head path to the path it had on the base revision,
+# or nil when the file is new.
+def rating_findings(base_ratings, head_ratings, changes)
+  changes.filter_map do |path, base_path|
+    head = head_ratings.fetch(path)
+    base = base_ratings[base_path] if base_path
+
+    if base.nil?
+      next if RATINGS.index(head) <= RATINGS.index(WORST_NEW_FILE_RATING)
+
+      format("%<path>s is new and rated %<head>s; new files must be %<limit>s or better",
+        path: path,
+        head: head,
+        limit: WORST_NEW_FILE_RATING)
+    elsif RATINGS.index(head) > RATINGS.index(base)
+      format("%<path>s rating fell from %<base>s to %<head>s", path: path, base: base, head: head)
+    end
+  end
+end
+
+def resolve_revision(revision)
+  return revision unless revision.match?(NULL_REVISION)
+
+  empty_tree, error, status = Open3.capture3("git", "hash-object", "-t", "tree", "--stdin", stdin_data: "")
+  abort(error) unless status.success?
+
+  empty_tree.strip
+end
+
+# Returns { head_path => base_path_or_nil } for Ruby files this change adds or modifies.
+def changed_ruby_files(base_revision)
   diff, diff_error, diff_status = Open3.capture3(
-    "git", "diff", "--name-only", "--diff-filter=ACMR", base_revision, "--", "app", "lib"
+    "git",
+    "diff",
+    "--name-status",
+    "-M",
+    "--diff-filter=ACMR",
+    base_revision,
+    "--",
+    "app",
+    "lib"
   )
   abort(diff_error) unless diff_status.success?
 
   untracked, untracked_error, untracked_status = Open3.capture3(
-    "git", "ls-files", "--others", "--exclude-standard", "--", "app", "lib"
+    "git",
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+    "--",
+    "app",
+    "lib"
   )
   abort(untracked_error) unless untracked_status.success?
 
-  (diff.lines + untracked.lines)
-    .map(&:strip)
-    .uniq
-    .select { |path| path.end_with?(".rb") && File.file?(path) }
+  changes = diff.lines.to_h do |line|
+    status, *paths = line.chomp.split("\t")
+    # Only a modification or rename carries a base rating; additions and copies are new files.
+    base_path = { "M" => paths.last, "R" => paths.first }[status[0]]
+    [ paths.last, base_path ]
+  end
+  untracked.lines.each { |line| changes[line.strip] = nil }
+
+  changes.select { |path, _| path.end_with?(".rb") && File.file?(path) }
 end
 
-def generate_report(paths, report_directory)
+# The whole tree is analysed on both sides because duplication matches, and therefore
+# ratings, depend on every file. The binstub is not used because it would chdir out of
+# the base checkout this run has to measure.
+def generate_report(report_directory, directory: Dir.pwd)
+  directories = ANALYSED_DIRECTORIES.select { |name| File.directory?(File.join(directory, name)) }
+  return nil if directories.empty?
+
   command = [
     RbConfig.ruby,
-    File.expand_path("rubycritic", __dir__),
-    "--format", "json",
-    "--path", report_directory,
-    "--minimum-score", "0",
-    *paths
+    "-e",
+    'require "bundler/setup"; load Gem.bin_path("rubycritic", "rubycritic")',
+    "--",
+    "--format",
+    "json",
+    "--path",
+    report_directory,
+    "--minimum-score",
+    "0",
+    *directories
   ]
-  stdout, stderr, status = Open3.capture3(*command)
-  return if status.success?
+  stdout, stderr, status = Open3.capture3({ "BUNDLE_GEMFILE" => GEMFILE }, *command, chdir: directory)
+  return File.join(report_directory, "report.json") if status.success?
 
   warn stdout
   abort(stderr)
+end
+
+# An empty-tree baseline (unset RUBYCRITIC_BASE, or a null push SHA) has no commit to rate, so only
+# method smells apply: comparing against nothing would treat every existing file as new.
+def commit?(revision)
+  object_type, = Open3.capture2("git", "cat-file", "-t", revision)
+  object_type.strip == "commit"
+end
+
+# Rates the base revision from a checkout of that revision, because duplication
+# matches (and so ratings) depend on every file, not just the changed ones.
+def base_file_ratings(base_revision, report_directory)
+  Dir.mktmpdir("rubycritic-base") do |parent|
+    checkout = File.join(parent, "checkout")
+    _stdout, error, status = Open3.capture3("git", "worktree", "add", "--detach", checkout, base_revision)
+    abort(error) unless status.success?
+
+    begin
+      report = generate_report(report_directory, directory: checkout)
+      report ? file_ratings(report) : {}
+    ensure
+      Open3.capture3("git", "worktree", "remove", "--force", checkout)
+    end
+  end
 end
 
 if ARGV.first == "--check-report"
@@ -84,23 +174,36 @@ if ARGV.first == "--check-report"
   exit(findings.empty? ? 0 : 1)
 end
 
+if ARGV.first == "--check-ratings"
+  _flag, base_report, head_report, *specs = ARGV
+  changes = specs.to_h { |spec| spec.split(":", 2).then { |path, base_path| [ path, base_path ] } }
+  findings = rating_findings(file_ratings(base_report), file_ratings(head_report), changes)
+  puts findings
+  exit(findings.empty? ? 0 : 1)
+end
+
 base_revision = ARGV.fetch(0) do
   warn "Usage: bin/rubycritic-changed BASE_REVISION"
   exit 2
 end
-paths = changed_ruby_files(base_revision)
+base_revision = resolve_revision(base_revision)
+changes = changed_ruby_files(base_revision)
 
-if paths.empty?
+if changes.empty?
   puts "No changed Ruby files under app/ or lib/."
   exit 0
 end
 
 Dir.mktmpdir("rubycritic-changed") do |report_directory|
-  generate_report(paths, report_directory)
-  findings = blocking_findings(File.join(report_directory, "report.json"))
+  head_report = generate_report(File.join(report_directory, "head"))
+  findings = blocking_findings(head_report, only_paths: changes.keys)
+  if commit?(base_revision)
+    base_ratings = base_file_ratings(base_revision, File.join(report_directory, "base"))
+    findings += rating_findings(base_ratings, file_ratings(head_report), changes)
+  end
 
   if findings.empty?
-    puts "RubyCritic changed-code gate passed for #{paths.length} file(s)."
+    puts "RubyCritic changed-code gate passed for #{changes.length} file(s)."
     exit 0
   end
 

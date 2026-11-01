@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "rails_helper"
+require "fileutils"
 require "open3"
 require "tempfile"
 require "tmpdir"
@@ -38,7 +39,7 @@ RSpec.describe "bin/rubycritic-changed" do
 
   def check_null_base
     Dir.mktmpdir("rubycritic-null-base") do |repo|
-      _init_stdout, init_stderr, init_status = Open3.capture3("git", "init", "--quiet", chdir: repo)
+      _init_stdout, init_stderr, init_status = Open3.capture3("git", "init", "--quiet", "--template=", chdir: repo)
       stdout, stderr, status = Open3.capture3(
         Rails.root.join("bin/rubycritic-changed").to_s,
         "0" * 40,
@@ -46,6 +47,66 @@ RSpec.describe "bin/rubycritic-changed" do
       )
       return [ init_status.success?, init_stderr, status.success?, stdout, stderr ]
     end
+  end
+
+  # The rating rules themselves are covered by the template contract suite through
+  # --check-ratings. The examples below spend their time where only a real RubyCritic run
+  # can help: rating the base revision from a checkout of that revision.
+  def git(repo, *args)
+    stdout, stderr, status = Open3.capture3(
+      "git",
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.com",
+      *args,
+      chdir: repo
+    )
+    raise "git #{args.join(' ')} failed: #{stderr}" unless status.success?
+
+    stdout.strip
+  end
+
+  def empty_tree(repo)
+    stdout, stderr, status = Open3.capture3(
+      "git",
+      "hash-object",
+      "-t",
+      "tree",
+      "--stdin",
+      stdin_data: "",
+      chdir: repo
+    )
+    raise "could not name the empty tree: #{stderr}" unless status.success?
+
+    stdout.strip
+  end
+
+  def widget_source(statements)
+    body = Array.new(statements) { |index| "    value = [ value, #{index} ].max if value.odd? && #{index}.even?" }
+    "class Widget\n  def work(value)\n#{body.join("\n")}\n    value\n  end\nend\n"
+  end
+
+  # Yields a committed application together with its base revision, so each example can
+  # change the working tree the way a pull request would.
+  def committed_app
+    Dir.mktmpdir("rubycritic-real") do |repo|
+      FileUtils.mkdir_p(File.join(repo, "app"))
+      git(repo, "init", "--quiet", "--template=")
+      File.write(File.join(repo, "app/widget.rb"), widget_source(2))
+      git(repo, "add", ".")
+      git(repo, "commit", "--quiet", "-m", "base")
+      yield repo, git(repo, "rev-parse", "HEAD")
+    end
+  end
+
+  def run_gate(repo, base)
+    stdout, stderr, status = Open3.capture3(
+      Rails.root.join("bin/rubycritic-changed").to_s,
+      base,
+      chdir: repo
+    )
+    [ status.success?, stdout, stderr ]
   end
 
   it "fails with an actionable location for a high-complexity finding" do
@@ -80,5 +141,50 @@ RSpec.describe "bin/rubycritic-changed" do
     expect(check_null_base).to eq(
       [ true, "", true, "No changed Ruby files under app/ or lib/.\n", "" ]
     )
+  end
+
+  it "measures the base rating on the base revision, not on the working tree" do
+    result = committed_app do |repo, base|
+      File.write(File.join(repo, "app/widget.rb"), widget_source(80))
+      run_gate(repo, base)
+    end
+
+    expect(result).to match([ false, /app\/widget\.rb rating fell from A to [BCDF]/, anything ])
+  end
+
+  it "passes a changed file that keeps the rating it already had" do
+    result = committed_app do |repo, base|
+      File.write(File.join(repo, "app/widget.rb"), "# Touched, unchanged.\n#{widget_source(2)}")
+      run_gate(repo, base)
+    end
+
+    expect(result).to eq([ true, "RubyCritic changed-code gate passed for 1 file(s).\n", "" ])
+  end
+
+  it "requires an added file to be rated B or better" do
+    result = committed_app do |repo, base|
+      File.write(File.join(repo, "app/slop.rb"), widget_source(90))
+      run_gate(repo, base)
+    end
+
+    expect(result).to match([ false, /app\/slop\.rb is new and rated [CDF]/, anything ])
+  end
+
+  it "skips the rating comparison for an empty-tree base, where every file would look new" do
+    result = committed_app do |repo, _base|
+      File.write(File.join(repo, "app/extra.rb"), "class Extra\n  def work = 1\nend\n")
+      run_gate(repo, empty_tree(repo))
+    end
+
+    expect(result).to eq([ true, "RubyCritic changed-code gate passed for 2 file(s).\n", "" ])
+  end
+
+  it "skips the rating comparison for a null push base" do
+    result = committed_app do |repo, _base|
+      File.write(File.join(repo, "app/extra.rb"), "class Extra\n  def work = 1\nend\n")
+      run_gate(repo, "0" * 40)
+    end
+
+    expect(result).to eq([ true, "RubyCritic changed-code gate passed for 2 file(s).\n", "" ])
   end
 end
