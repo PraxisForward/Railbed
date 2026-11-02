@@ -196,6 +196,15 @@ class TemplateTest < Minitest::Test
     assert_equal "app/services/example.rb:12 Example#work HighComplexity: has a flog score of 30\n", output
   end
 
+  def test_changed_code_gate_blocks_very_high_complexity_with_an_actionable_location
+    success, output = check_rubycritic_report(
+      report_for(type: "VeryHighComplexity", message: "has a flog score of 70", line: 12)
+    )
+
+    refute success
+    assert_equal "app/services/example.rb:12 Example#work VeryHighComplexity: has a flog score of 70\n", output
+  end
+
   def test_changed_code_gate_blocks_genuinely_large_methods
     success, output = check_rubycritic_report(
       report_for(type: "TooManyStatements", message: "has approx 15 statements")

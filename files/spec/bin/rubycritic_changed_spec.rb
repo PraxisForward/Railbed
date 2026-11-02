@@ -129,6 +129,14 @@ RSpec.describe "bin/rubycritic-changed" do
     )
   end
 
+  it "fails a method flog rated past the very-high threshold" do
+    result = check_report(report_for(type: "VeryHighComplexity", message: "has a flog score of 70", line: 12))
+
+    expect(result).to eq(
+      [ false, "app/services/example.rb:12 Example#work VeryHighComplexity: has a flog score of 70\n" ]
+    )
+  end
+
   it "fails on a genuinely large method" do
     result = check_report(report_for(type: "TooManyStatements", message: "has approx 15 statements"))
 
