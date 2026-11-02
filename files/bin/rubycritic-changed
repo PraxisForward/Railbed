@@ -71,13 +71,32 @@ def rating_findings(base_ratings, head_ratings, changes)
   end
 end
 
-def resolve_revision(revision)
-  return revision unless revision.match?(NULL_REVISION)
-
+def empty_tree_revision
   empty_tree, error, status = Open3.capture3("git", "hash-object", "-t", "tree", "--stdin", stdin_data: "")
   abort(error) unless status.success?
 
   empty_tree.strip
+end
+
+def unusable_base(revision, error)
+  "#{revision.inspect} does not name a single commit, so RubyCritic cannot rate changes against it. " \
+    "Pass one revision to compare against, such as the pull-request base commit, not a range or a tree. #{error}"
+end
+
+# Decides what to compare against, and whether a rating comparison is possible at all. Git's empty
+# tree, which is what an unset RUBYCRITIC_BASE and the null SHA of an initial push both become, has no
+# commit to rate: only the method smells apply there, because comparing against nothing would call
+# every existing file new. Anything else has to name exactly one commit, so an annotated tag is
+# dereferenced and a range or a tree is refused. Refused, not skipped: git diff accepts a range and
+# would then report the files this change touched while the rating comparison silently never ran.
+def resolve_base(revision)
+  empty_tree = empty_tree_revision
+  return { revision: empty_tree, rated: false } if revision.match?(NULL_REVISION) || revision == empty_tree
+
+  commit, error, status = Open3.capture3("git", "rev-parse", "--verify", "--quiet", "#{revision}^{commit}")
+  abort(unusable_base(revision, error)) unless status.success? && commit.lines.length == 1
+
+  { revision: commit.strip, rated: true }
 end
 
 # Returns { head_path => base_path_or_nil } for Ruby files this change adds or modifies.
@@ -144,13 +163,6 @@ def generate_report(report_directory, directory: Dir.pwd)
   abort(stderr)
 end
 
-# An empty-tree baseline (unset RUBYCRITIC_BASE, or a null push SHA) has no commit to rate, so only
-# method smells apply: comparing against nothing would treat every existing file as new.
-def commit?(revision)
-  object_type, = Open3.capture2("git", "cat-file", "-t", revision)
-  object_type.strip == "commit"
-end
-
 # Rates the base revision from a checkout of that revision, because duplication
 # matches (and so ratings) depend on every file, not just the changed ones.
 def base_file_ratings(base_revision, report_directory)
@@ -186,8 +198,8 @@ base_revision = ARGV.fetch(0) do
   warn "Usage: bin/rubycritic-changed BASE_REVISION"
   exit 2
 end
-base_revision = resolve_revision(base_revision)
-changes = changed_ruby_files(base_revision)
+base = resolve_base(base_revision)
+changes = changed_ruby_files(base.fetch(:revision))
 
 if changes.empty?
   puts "No changed Ruby files under app/ or lib/."
@@ -197,9 +209,11 @@ end
 Dir.mktmpdir("rubycritic-changed") do |report_directory|
   head_report = generate_report(File.join(report_directory, "head"))
   findings = blocking_findings(head_report, only_paths: changes.keys)
-  if commit?(base_revision)
-    base_ratings = base_file_ratings(base_revision, File.join(report_directory, "base"))
+  if base.fetch(:rated)
+    base_ratings = base_file_ratings(base.fetch(:revision), File.join(report_directory, "base"))
     findings += rating_findings(base_ratings, file_ratings(head_report), changes)
+  else
+    puts "Rating comparison skipped: Git's empty tree has no commit to rate, so only method smells apply."
   end
 
   if findings.empty?

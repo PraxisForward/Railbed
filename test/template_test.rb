@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "fileutils"
 require "json"
 require "open3"
 require "pathname"
@@ -277,6 +278,19 @@ class TemplateTest < Minitest::Test
     assert_empty output
   end
 
+  def test_rating_gate_refuses_a_base_that_is_not_a_single_commit
+    %w[HEAD~1..HEAD HEAD~1...HEAD HEAD^{tree}].each do |revision|
+      committed_repo_with_growth do |repo|
+        stdout, stderr, status = Open3.capture3(
+          ROOT.join("files/bin/rubycritic-changed").to_s, revision, chdir: repo
+        )
+        refute status.success?, "#{revision} must not be accepted as a base"
+        assert_empty stdout, "#{revision} must not be reported as a gate that passed"
+        assert_includes stderr, "does not name a single commit", "#{revision} must be refused by name"
+      end
+    end
+  end
+
   def test_rating_gate_treats_a_copied_file_as_a_new_file
     success, output = check_rubycritic_ratings(
       base: {"app/original.rb" => "A"},
@@ -414,6 +428,35 @@ class TemplateTest < Minitest::Test
       )
       return [status.success?, stdout]
     end
+  end
+
+  def committed_repo_with_growth
+    Dir.mktmpdir("rubycritic-base-arg") do |repo|
+      FileUtils.mkdir_p(File.join(repo, "app"))
+      File.write(File.join(repo, "app/widget.rb"), "class Widget\n  def work = 1\nend\n")
+      git(repo, "init", "--quiet", "--template=")
+      git(repo, "add", ".")
+      git(repo, "commit", "--quiet", "-m", "base")
+      File.write(File.join(repo, "app/widget.rb"), "class Widget\n  def work(value)\n    value\n  end\nend\n")
+      git(repo, "add", ".")
+      git(repo, "commit", "--quiet", "-m", "grown")
+      yield repo
+    end
+  end
+
+  def git(repo, *args)
+    stdout, stderr, status = Open3.capture3(
+      "git",
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.com",
+      *args,
+      chdir: repo
+    )
+    raise "git #{args.join(' ')} failed: #{stderr}" unless status.success?
+
+    stdout.strip
   end
 
   def check_rubycritic_ratings(base:, head:, changes:)
