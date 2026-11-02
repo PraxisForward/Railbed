@@ -100,6 +100,14 @@ RSpec.describe "bin/rubycritic-changed" do
     end
   end
 
+  # Grows the committed file the way a pull request would, so the base revision has something
+  # older to compare the working tree against.
+  def grow_widget(repo)
+    File.write(File.join(repo, "app/widget.rb"), widget_source(80))
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "grown")
+  end
+
   def run_gate(repo, base)
     stdout, stderr, status = Open3.capture3(
       Rails.root.join("bin/rubycritic-changed").to_s,
@@ -107,6 +115,10 @@ RSpec.describe "bin/rubycritic-changed" do
       chdir: repo
     )
     [ status.success?, stdout, stderr ]
+  end
+
+  def skip_note
+    "Rating comparison skipped: Git's empty tree has no commit to rate, so only method smells apply.\n"
   end
 
   it "fails with an actionable location for a high-complexity finding" do
@@ -149,7 +161,7 @@ RSpec.describe "bin/rubycritic-changed" do
       run_gate(repo, base)
     end
 
-    expect(result).to match([ false, /app\/widget\.rb rating fell from A to [BCDF]/, anything ])
+    expect(result).to match([ false, /app\/widget\.rb rating fell from [ABC] to [BCDF]/, anything ])
   end
 
   it "passes a changed file that keeps the rating it already had" do
@@ -176,7 +188,7 @@ RSpec.describe "bin/rubycritic-changed" do
       run_gate(repo, empty_tree(repo))
     end
 
-    expect(result).to eq([ true, "RubyCritic changed-code gate passed for 2 file(s).\n", "" ])
+    expect(result).to eq([ true, "#{skip_note}RubyCritic changed-code gate passed for 2 file(s).\n", "" ])
   end
 
   it "skips the rating comparison for a null push base" do
@@ -185,6 +197,15 @@ RSpec.describe "bin/rubycritic-changed" do
       run_gate(repo, "0" * 40)
     end
 
-    expect(result).to eq([ true, "RubyCritic changed-code gate passed for 2 file(s).\n", "" ])
+    expect(result).to eq([ true, "#{skip_note}RubyCritic changed-code gate passed for 2 file(s).\n", "" ])
+  end
+
+  it "refuses a revision range instead of the one commit to rate against" do
+    result = committed_app do |repo, _base|
+      grow_widget(repo)
+      run_gate(repo, "HEAD~1..HEAD")
+    end
+
+    expect(result).to match([ false, "", /does not name a single commit/ ])
   end
 end

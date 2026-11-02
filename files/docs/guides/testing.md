@@ -21,6 +21,8 @@ Two checks cover maintainability, and only one of them gates a change.
 
 `bin/rubycritic-changed <base-ref>` is the gate. Every Ruby file under `app/` and `lib/` that the change touches must not end up with a worse RubyCritic rating letter than it had on `<base-ref>`: a file that falls from A to B fails, and a file that stays at C is fine. A file with no counterpart on the base has no rating to keep, so it must be rated B or better. Git names both paths of a rename, so a rename is judged against the file it came from, while an addition and a copy count as new files. Each failure prints the file and the rating before and after, together with the blocking `HighComplexity` findings and the `TooManyStatements` findings of 10 or more statements, which that run still reports with their line, context, smell type, and message.
 
+`<base-ref>` has to name one commit. An annotated tag is dereferenced to its commit; a revision range or a tree is refused outright, because `git diff` accepts a range happily and the run would otherwise report the touched files while the rating comparison silently never happened.
+
 The base rating is measured on a checkout of `<base-ref>` itself, in a temporary Git worktree, analysing `app/` and `lib/` in full. RubyCritic matches duplicate code across files, so a rating only means something against the tree it was measured on.
 
 `bin/rubycritic` still prints the codebase-wide score, and `.rubycritic.yml` fails it only below the 90/100 backstop. The rating gate above is what a review acts on; the aggregate score is a backstop against a genuine collapse, such as a RubyCritic upgrade re-scoring the whole application.
