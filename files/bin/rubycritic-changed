@@ -9,12 +9,15 @@ require "tmpdir"
 MAX_ADVISORY_STATEMENTS = 9
 NULL_REVISION = /\A(?:0{40}|0{64})\z/
 RATINGS = %w[A B C D F].freeze
+BLOCKING_SMELL_TYPES = %w[HighComplexity VeryHighComplexity].freeze
 WORST_NEW_FILE_RATING = "B"
 ANALYSED_DIRECTORIES = %w[app lib].freeze
 GEMFILE = File.expand_path("../Gemfile", __dir__)
 
 def blocking_smell?(smell)
-  return true if smell.fetch("type") == "HighComplexity"
+  # flog types a method VeryHighComplexity rather than HighComplexity once its score reaches 60,
+  # so both names have to block or the worst methods are the only ones that pass.
+  return true if BLOCKING_SMELL_TYPES.include?(smell.fetch("type"))
   return false unless smell.fetch("type") == "TooManyStatements"
 
   smell.fetch("message")[/\d+/].to_i > MAX_ADVISORY_STATEMENTS
