@@ -390,6 +390,23 @@ class TemplateTest < Minitest::Test
     assert_includes workflow, "Reject rating regressions in changed Ruby files"
   end
 
+  def test_generated_ci_uses_current_github_actions
+    workflow = ROOT.join("files/.github/workflows/ci.yml").read
+
+    assert_equal 3, workflow.scan("uses: actions/checkout@v7").size
+    assert_includes workflow, "uses: actions/upload-artifact@v7"
+  end
+
+  def test_generated_ci_prepares_the_test_database_before_specs
+    workflow = ROOT.join("files/.github/workflows/ci.yml").read
+    jobs = workflow.split(/^  (?:test|system-test):$/)
+
+    assert_equal 2, jobs.drop(1).size
+    jobs.drop(1).each do |job|
+      assert_operator job.index("run: bin/rails db:prepare"), :<, job.index("run: bundle exec rspec")
+    end
+  end
+
   def test_integration_lane_runs_generated_quality_and_security_checks
     test_runner = ROOT.join("bin/test").read
 
